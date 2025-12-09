@@ -76,10 +76,17 @@ def clean_comments(comments):
     for x in remove_list:
         comments.remove(x)
 
+    for x in comments:
+        if x == '':
+            comments.remove(x)
+
+    if len(comments) == 0:
+        caption, comments = None, []
+    else:
     # the first 'comment' is usually the caption
-    caption = comments[0]
-    # these comments are a mix of usernames and the actual comment.
-    comments = comments[1:]
+        caption = comments[0]
+        # these comments are a mix of usernames and the actual comment.
+        comments = comments[1:]
 
     return caption, comments, likes
 
@@ -119,8 +126,8 @@ def compute_fprops(crawl1, crawl2, merged_df, all_urls):
                 diff_s_no_rank = set(s1_no_rank).symmetric_difference(set(s2))
                 diff_s_rank = [1 for x, y in zip(s1_rank, s2) if x != y]
 
-                # denom_no_rank = len(set(s1_no_rank).union(set(s2)))
-                denom_no_rank = max(len(s1_rank), len(s2))
+                denom_no_rank = len(set(s1_no_rank).union(set(s2)))
+                # denom_no_rank = max(len(s1_rank), len(s2))
                 denom_rank = max(len(s1_rank), len(s2))
 
                 fprop_no_rank = len(diff_s_no_rank) / denom_no_rank
@@ -197,3 +204,55 @@ def get_chronological_order_comments(merged_df, all_urls, all_crawls):
                 
     temp_df = pd.DataFrame(temp_list)
     return temp_df
+
+
+def compute_label_comments(crawl1, crawl2, merged_df, all_urls):
+    if crawl2 == 'chronological':
+        raise ValueError('chronological should be the first crawl')
+
+    col1 = f'{crawl1}_comment'
+    col2 = f'{crawl2}_comment'
+
+    for account in all_urls.keys():
+        urlids = merged_df[merged_df['account'] == account]['urlid'].unique()
+
+        temp_list_no_rank = []
+        temp_list_rank = []
+        for urlid in urlids:
+            # dropping NaN comments which were here due to the addition of the chronological comments
+            s1 = merged_df[(merged_df['account'] == account) & (merged_df['urlid'] == urlid)][col1].dropna().tolist()
+            s2 = merged_df[(merged_df['account'] == account) & (merged_df['urlid'] == urlid)][col2].dropna().tolist()
+
+            # need to implement diff structure for chronological comments since they will have comments from all crawls 
+            try:
+                if crawl1 == 'chronological':
+                    s1_no_rank = s1[:len(s2)]
+                    s1_rank = [x for x in s1 if x in s2]
+                else:
+                    s1_no_rank = s1.copy()
+                    s1_rank = s1.copy()
+                
+                for x in s2:
+                    if x in s1_no_rank:
+                        label_no_rank = 1
+                    else :
+                        label_no_rank = 0
+                    
+                    cidx = merged_df.index[merged_df[col2] == x].values[0]
+                    cnum = merged_df.loc[cidx, 'comment_num']
+                    merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid) & (merged_df['comment_num'] == cnum), 'fcount_no_rank'] = label_no_rank
+                
+                for i, x in enumerate(s2):
+                    if x == s1_rank[i]:
+                        label_rank = 1 
+                    else:
+                        label_rank = 0
+                        
+                    cidx = merged_df.index[merged_df[col2] == x].values[0]
+                    cnum = merged_df.loc[cidx, 'comment_num']
+                    merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid) & (merged_df['comment_num'] == cnum), 'fcount_rank'] = label_rank
+
+            except Exception as e:
+                print(e, account, urlid)
+                continue
+    return merged_df
