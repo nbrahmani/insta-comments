@@ -146,28 +146,37 @@ def compute_fprops(crawl1, crawl2, merged_df, all_urls):
                     s1_rank = [x for x in s1 if x in s2]
                 else:
                     s1_no_rank = s1
-                    s1_rank = s1
+                    s1_rank = [x for x in s1 if x in s2]
+                    s2_rank = [x for x in s2 if x in s1]
 
-                # diff_s_no_rank = set(s1_no_rank).intersection(set(s2))
-                diff_s_no_rank = set(s1_no_rank).symmetric_difference(set(s2))
-                diff_s_rank = [1 for x, y in zip(s1_rank, s2) if x != y]
+                if len(s1) == 0 or len(s2) == 0:
+                    merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid), 'fcount_no_rank'] = -1
+                    merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid), 'ftrials_no_rank'] = -1
 
-                denom_no_rank = len(s1_no_rank) + len(s2) 
-                # denom_no_rank = len(set(s1_no_rank).union(set(s2)))
-                # denom_no_rank = min(len(s1_rank), len(s2))
-                denom_rank = max(len(s1_rank), len(s2))
+                    merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid), 'fcount_rank'] = -1
+                    merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid), 'ftrials_rank'] = -1 
+                else:
+                    # diff_s_no_rank = set(s1_no_rank).intersection(set(s2))
+                    # denom_no_rank = len(set(s1_no_rank).union(set(s2)))
+                    # denom_no_rank = min(len(s1_rank), len(s2))
 
-                fprop_no_rank = len(diff_s_no_rank) / denom_no_rank
-                fprop_rank = sum(diff_s_rank) / denom_rank
+                    diff_s_no_rank = set(s1_no_rank).symmetric_difference(set(s2))
+                    denom_no_rank = len(s1_no_rank) + len(s2) 
 
-                temp_list_no_rank.append(fprop_no_rank)
-                temp_list_rank.append(fprop_rank)
+                    diff_s_rank = [1 for x, y in zip(s1_rank, s2_rank) if x != y]
+                    denom_rank = max(len(s1_rank), len(s2_rank))
 
-                merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid), 'fcount_no_rank'] = len(diff_s_no_rank)
-                merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid), 'ftrials_no_rank'] = denom_no_rank
+                    fprop_no_rank = len(diff_s_no_rank) / denom_no_rank
+                    fprop_rank = sum(diff_s_rank) / denom_rank
 
-                merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid), 'fcount_rank'] = sum(diff_s_rank)
-                merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid), 'ftrials_rank'] = denom_rank
+                    temp_list_no_rank.append(fprop_no_rank)
+                    temp_list_rank.append(fprop_rank)
+
+                    merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid), 'fcount_no_rank'] = len(diff_s_no_rank)
+                    merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid), 'ftrials_no_rank'] = denom_no_rank
+
+                    merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid), 'fcount_rank'] = sum(diff_s_rank)
+                    merged_df.loc[(merged_df['account'] == account) & (merged_df['urlid'] == urlid), 'ftrials_rank'] = denom_rank
 
             except Exception as e:
                 print(e, account, urlid, denom_no_rank, denom_rank)
@@ -201,25 +210,25 @@ def get_chronological_order_comments(merged_df, all_urls, all_crawls):
 
             # get comments for a particular post
             temp = merged_df[(merged_df['account'] == account) & (merged_df['urlid'] == urlid)].copy()
-            unique_comments = {}
+            common_comments = {}
 
             # get all unique comments across all crawls
             for col in all_crawls:
                 for comment, timestamp in zip(temp[f'{col}_comment'], temp[f'{col}_timestamp']):
                     if pd.isna(comment):
                         continue
-                    if comment not in unique_comments:
-                        unique_comments[comment] = timestamp
+                    if comment not in common_comments:
+                        common_comments[comment] = timestamp
                     else:
-                        if timestamp != unique_comments[comment]:
+                        if timestamp != common_comments[comment]:
                             print('mismatch timestamp for same comment')
 
             # convert timestamps to datetime objects
-            for comment, timestamp in unique_comments.items():
-                unique_comments[comment] = datetime.fromisoformat(timestamp)
+            for comment, timestamp in common_comments.items():
+                common_comments[comment] = datetime.fromisoformat(timestamp)
 
             # sort comments by timestamp§
-            sorted_comments = sorted(unique_comments.items(), key=lambda x: x[1], reverse=True)
+            sorted_comments = sorted(common_comments.items(), key=lambda x: x[1], reverse=True)
             idx = 0
             for comment, timestamp in sorted_comments:
                 temp_list.append({'account': account,
@@ -364,20 +373,23 @@ def compute_presence_comments(crawl1, crawl2, df, labels_df):
             s1 = temp[col1].dropna().tolist()
             s2 = temp[col2].dropna().tolist()
 
-            unique_comments = set(s1).intersection(set(s2))
+            if len(s1) == 0 or len(s2) == 0:
+                continue
+            else:
+                common_comments = set(s1).intersection(set(s2))
 
-            # TODO: need to include code for rankign if needed
-            for comment in set(s1).union(set(s2)):
-                temp_dict = {}
-                if pd.isna(comment):
-                    continue
-                else:
-                    if comment in unique_comments:
-                        presence_no_rank = 'Yes'
+                # TODO: need to include code for rankign if needed
+                for comment in set(s1).union(set(s2)):
+                    temp_dict = {}
+                    if pd.isna(comment):
+                        continue
                     else:
-                        presence_no_rank = 'No'
+                        if comment in common_comments:
+                            presence_no_rank = 'Yes'
+                        else:
+                            presence_no_rank = 'No'
 
-                    label = labels_df[labels_df['comment_combined'] == ast.literal_eval(comment)]['label'].values[0]
+                        label = labels_df[labels_df['comment_combined'] == ast.literal_eval(comment)]['label'].values[0]
                     
                     temp_dict['account'] = account
                     temp_dict['urlid'] = urlid
@@ -432,3 +444,36 @@ def get_df_for_regression_comments(df, all_crawls, labels_df):
 
     reg_df = pd.DataFrame(temp_list)       
     return reg_df
+
+
+def edit_labels(name):
+    rename_map = {
+        "Intercept": "Intercept",
+        "location_diff": "Location Diff [Yes]",
+        "gender_diff": "Gender Diff [Yes]",
+        "ideology_diff": "Leaning Diff [Yes]",
+        "followers_logz": "Followers (log z)",
+        "comments_count_logz": "Comments (log z)",
+        "type": "Account Type",
+        "main_topic": "Post Type [Non-Political]",
+        "location": "Location",
+        "gender": "Gender",
+        "ideology": "Leaning",
+        "female_female": "Female_Female*",
+        "male_male": "Male_Male'",
+        "female_male": "Female_Male*",
+        "dem_rep": "Dem_Rep*",
+        "dem_dem": "Dem_Dem*",
+        "rep_rep": "Rep_Rep'",
+        "ny_ny": "NY_NY*",
+        "ny_texas": "NY_TX*",
+        "texas_texas": "TX_TX'" ,
+        "Non-News": "Non-News'",
+        "News": "News*",
+        "Supportive": "Supportive*",
+        "Agaisnst": "Agaisnt",
+        "Neutral": "Neutral'"
+    }
+    base = re.split(r"(\[|\()", name, maxsplit=1)[0]
+    rest = name[len(base):]
+    return rename_map.get(base, base) + rest
